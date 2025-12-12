@@ -9,18 +9,35 @@ from dotenv import load_dotenv
 st.set_page_config(page_title="CS Sentinel Dashboard", page_icon="🛡️", layout="wide")
 
 # --- 1. SETUP & AUTH ---
-# We reuse the exact same auth as your brain
+# Load local .env if it exists
 load_dotenv()
-SHEET_ID = os.getenv("SHEET_ID")
 
-@st.cache_data(ttl=60) # Cache data for 60 seconds to save API calls
+@st.cache_data(ttl=60)
 def load_data():
     try:
-        gc = gspread.service_account(filename='credentials.json')
-        sh = gc.open_by_key(SHEET_ID)
+        # PATH A: LOCAL MODE (Look for the file)
+        if os.path.exists('credentials.json'):
+            gc = gspread.service_account(filename='credentials.json')
+            sheet_id = os.getenv("SHEET_ID")
+            
+        # PATH B: CLOUD MODE (Look for Streamlit Secrets)
+        # We check if the 'gcp_service_account' section exists in secrets
+        elif "gcp_service_account" in st.secrets:
+            # We recreate the dictionary from the secrets
+            creds_dict = st.secrets["gcp_service_account"]
+            gc = gspread.service_account_from_dict(creds_dict)
+            sheet_id = st.secrets["SHEET_ID"]
+            
+        else:
+            st.error("❌ No credentials found! (Checked local 'credentials.json' and cloud secrets)")
+            return pd.DataFrame()
+
+        # Connect to Sheet
+        sh = gc.open_by_key(sheet_id)
         worksheet = sh.sheet1
         data = worksheet.get_all_records()
         return pd.DataFrame(data)
+
     except Exception as e:
         st.error(f"❌ Connection Error: {e}")
         return pd.DataFrame()
